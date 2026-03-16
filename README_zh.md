@@ -1,5 +1,7 @@
 # DisableAPM
 
+简体中文 | [English](README.md)
+
 一款轻量级的 Windows 工具，用于禁用机械硬盘的高级电源管理（APM），防止因频繁启停导致的延迟和噪音问题。
 
 ## 背景

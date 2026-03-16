@@ -1,5 +1,7 @@
 # DisableAPM
 
+[简体中文](README.zh.md) | English
+
 A lightweight Windows utility that disables Advanced Power Management (APM) on mechanical hard drives to prevent latency
 and noise caused by frequent spin-up/spin-down cycles.
 
