@@ -67,6 +67,8 @@ DisableAPM.exe [选项]
 选项:
     -i, --index <索引>    指定目标磁盘索引（从 0 开始）
     -u, --usb             包含 USB 外置硬盘
+        --install         安装为 Windows 服务
+        --uninstall       卸载 Windows 服务
     -h, --help            显示帮助信息
     -V, --version         显示版本信息
 ```
@@ -90,6 +92,38 @@ DisableAPM.exe --index 2
 ```cmd
 DisableAPM.exe --usb
 ```
+
+### 服务安装
+
+安装为 Windows 服务，在系统启动时自动运行：
+
+```cmd
+DisableAPM.exe --install
+```
+
+服务将被安装到 `C:\Program Files\DisableAPM\` 目录，并在系统启动时自动以管理员权限运行。
+
+可以将安装选项与其他参数组合使用。例如，安装包含 USB 硬盘的服务：
+
+```cmd
+DisableAPM.exe --install --usb
+```
+
+或者安装针对特定磁盘的服务：
+
+```cmd
+DisableAPM.exe --install --index 2
+```
+
+### 服务卸载
+
+卸载 Windows 服务：
+
+```cmd
+DisableAPM.exe --uninstall
+```
+
+这将移除服务并删除安装目录。
 
 ### 如何查看磁盘索引号
 
@@ -117,7 +151,7 @@ DisableAPM 直接向硬盘控制器发送 ATA `SET FEATURES` 命令（0xEF），
 
 ## 兼容性
 
-- **操作系统：** Windows 10/11 (x64)
+- **操作系统：** Windows XP/7/8/8.1/10/11 (x86/x64)
 - **硬盘类型：** SATA 机械硬盘，NVMe 固态硬盘会自动跳过
 - **USB 硬盘：** 默认跳过（使用 `--usb` 参数可包含）
 - **固态硬盘：** 自动检测并跳过
@@ -127,21 +161,6 @@ DisableAPM 直接向硬盘控制器发送 ATA `SET FEATURES` 命令（0xEF），
 - APM 设置不会持久保存，重启后需要重新运行此工具
 - 部分 USB 硬盘盒可能不支持 ATA 透传命令
 - RAID 卷可能不响应 APM 命令，具体取决于控制器
-
-## 开机自动运行
-
-要实现每次启动时自动禁用 APM：
-
-1. 按 `Win + R`，输入 `shell:startup` 并回车
-2. 创建 `DisableAPM.exe` 的快捷方式
-3. 右键点击快捷方式 → 属性 → 快捷方式选项卡 → 高级
-4. 勾选"用管理员身份运行"并点击确定
-
-或者使用任务计划程序：
-
-1. 打开任务计划程序（`taskschd.msc`）
-2. 创建新任务，触发器选择"启动时"
-3. 操作设置为运行 `DisableAPM.exe`，使用最高权限运行
 
 ## 安全性
 

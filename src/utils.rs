@@ -1,23 +1,32 @@
 use anyhow::Result;
 use std::mem;
-use windows::core::{HSTRING, PCWSTR};
+use windows::core::{Interface, BSTR, HSTRING, PCWSTR};
 use windows::Win32::Devices::DeviceAndDriverInstallation::{
     SetupDiDestroyDeviceInfoList, SetupDiEnumDeviceInterfaces, SetupDiGetClassDevsW, DIGCF_DEVICEINTERFACE,
     DIGCF_PRESENT, SP_DEVICE_INTERFACE_DATA,
 };
 use windows::Win32::Foundation::{
-    CloseHandle, GetLastError, ERROR_NO_MORE_ITEMS, INVALID_HANDLE_VALUE,
+    CloseHandle, GetLastError, ERROR_NO_MORE_ITEMS, INVALID_HANDLE_VALUE, VARIANT_TRUE,
 };
 use windows::Win32::Storage::FileSystem::{
     CreateFileW, ReadFile, SetFilePointer, FILE_ATTRIBUTE_NORMAL, FILE_BEGIN,
     FILE_GENERIC_READ, FILE_GENERIC_WRITE, FILE_SHARE_READ, FILE_SHARE_WRITE, OPEN_EXISTING, STORAGE_BUS_TYPE,
 };
 use windows::Win32::Storage::IscsiDisc::{ATA_PASS_THROUGH_EX, IOCTL_ATA_PASS_THROUGH};
+use windows::Win32::System::Com::{
+    CoCreateInstance, CoInitializeEx, CLSCTX_INPROC_SERVER, COINIT_MULTITHREADED,
+};
 use windows::Win32::System::Ioctl::{
     PropertyStandardQuery, StorageDeviceProperty, StorageDeviceSeekPenaltyProperty,
     DEVICE_SEEK_PENALTY_DESCRIPTOR, GUID_DEVINTERFACE_DISK, IOCTL_STORAGE_QUERY_PROPERTY,
     STORAGE_DEVICE_DESCRIPTOR, STORAGE_PROPERTY_QUERY,
 };
+use windows::Win32::System::TaskScheduler::{
+    IExecAction, ISessionStateChangeTrigger, ITaskDefinition, ITaskService, TaskScheduler,
+    TASK_ACTION_EXEC, TASK_CREATE_OR_UPDATE, TASK_LOGON_INTERACTIVE_TOKEN,
+    TASK_LOGON_SERVICE_ACCOUNT, TASK_RUNLEVEL_HIGHEST, TASK_SESSION_UNLOCK, TASK_TRIGGER_SESSION_STATE_CHANGE,
+};
+use windows::Win32::System::Variant::VARIANT;
 use windows::Win32::System::IO::DeviceIoControl;
 
 #[repr(C)]
@@ -280,4 +289,144 @@ pub fn get_disk_bus_type(disk_index: u32) -> Result<STORAGE_BUS_TYPE> {
 
     let desc = unsafe { &*(buffer.as_ptr() as *const STORAGE_DEVICE_DESCRIPTOR) };
     Ok(desc.BusType)
+}
+
+/// 安装任务计划程序任务
+///
+/// # 参数
+/// - `name`: 任务名称
+/// - `description`: 任务描述
+/// - `exe_path`: 要执行的程序路径
+/// - `args`: 要传递给程序的参数列表
+///
+/// # 返回值
+/// - `Ok(())`: 成功安装任务
+/// - `Err(anyhow::Error)`: 安装失败，返回错误信息
+pub fn install_task(name: &str, description: &str, exe_path: &str, args: &[String]) -> Result<()> {
+    unsafe {
+        // 初始化 COM 组件
+        CoInitializeEx(None, COINIT_MULTITHREADED).ok()?;
+
+        // 创建 TaskService 实例
+        let service: ITaskService = CoCreateInstance(&TaskScheduler, None, CLSCTX_INPROC_SERVER)?;
+        service.Connect(
+            &VARIANT::default(),
+            &VARIANT::default(),
+            &VARIANT::default(),
+            &VARIANT::default(),
+        )?;
+
+        // 创建一个新的任务定义
+        let task_definition: ITaskDefinition = service.NewTask(0)?;
+
+        // 设置基本信息
+        let reg_info = task_definition.RegistrationInfo()?;
+        reg_info.SetDescription(&BSTR::from(description))?;
+
+        // 设置安全上下文 (以最高权限运行)
+        let principal = task_definition.Principal()?;
+        principal.SetRunLevel(TASK_RUNLEVEL_HIGHEST)?;
+        // 指定为 SYSTEM 账户
+        principal.SetUserId(&BSTR::from("SYSTEM"))?;
+        // 设置为服务账户登录模式
+        principal.SetLogonType(TASK_LOGON_SERVICE_ACCOUNT)?;
+
+        // 设置设置选项 (电源条件)
+        let settings = task_definition.Settings()?;
+        // 只有在交流电时启动
+        settings.SetDisallowStartIfOnBatteries(VARIANT_TRUE)?;
+        // 切换到电池时停止
+        settings.SetStopIfGoingOnBatteries(VARIANT_TRUE)?;
+        // 任务永不超时
+        settings.SetExecutionTimeLimit(&BSTR::from("PT0S"))?;
+        settings.SetStartWhenAvailable(VARIANT_TRUE)?;
+
+        // 设置触发器 (工作站解锁时)
+        let triggers = task_definition.Triggers()?;
+        let trigger = triggers.Create(TASK_TRIGGER_SESSION_STATE_CHANGE)?;
+        let session_trigger: ISessionStateChangeTrigger = trigger.cast()?;
+        session_trigger.SetStateChange(TASK_SESSION_UNLOCK)?; // 设置为工作站解锁时
+
+        // 设置动作 (执行程序)
+        let actions = task_definition.Actions()?;
+        let action = actions.Create(TASK_ACTION_EXEC)?;
+        let exec_action: IExecAction = action.cast()?;
+
+        exec_action.SetPath(&BSTR::from(exe_path))?;
+        exec_action.SetArguments(&BSTR::from(args.join(" ")))?;
+
+        // 注册任务
+        let folder = service.GetFolder(&BSTR::from("\\"))?;
+        folder.RegisterTaskDefinition(
+            &BSTR::from(name),
+            &task_definition,
+            TASK_CREATE_OR_UPDATE.0,
+            &VARIANT::default(),
+            &VARIANT::default(),
+            TASK_LOGON_INTERACTIVE_TOKEN,
+            &VARIANT::default(),
+        )?;
+    }
+
+    Ok(())
+}
+
+/// 卸载任务计划程序任务
+///
+/// # 参数
+/// - `name`: 任务名称
+///
+/// # 返回值
+/// - `Ok(())`: 成功卸载任务
+/// - `Err(anyhow::Error)`: 卸载失败，返回错误信息
+pub fn uninstall_task(name: &str) -> Result<()> {
+    unsafe {
+        // 初始化 COM 组件
+        CoInitializeEx(None, COINIT_MULTITHREADED).ok()?;
+
+        // 创建 TaskService 实例
+        let service: ITaskService = CoCreateInstance(&TaskScheduler, None, CLSCTX_INPROC_SERVER)?;
+        service.Connect(
+            &VARIANT::default(),
+            &VARIANT::default(),
+            &VARIANT::default(),
+            &VARIANT::default(),
+        )?;
+
+        // 删除任务
+        let folder = service.GetFolder(&BSTR::from("\\"))?;
+        folder.DeleteTask(&BSTR::from(name), 0)?;
+    }
+
+    Ok(())
+}
+
+/// 检查任务计划程序任务是否已安装
+///
+/// # 参数
+/// - `name`: 任务名称
+///
+/// # 返回值
+/// - `Ok(true)`: 任务已安装
+/// - `Ok(false)`: 任务未安装
+/// - `Err(anyhow::Error)`: 检查失败，返回错误信息
+pub fn is_task_installed(name: &str) -> Result<bool> {
+    unsafe {
+        // 初始化 COM 组件
+        CoInitializeEx(None, COINIT_MULTITHREADED).ok()?;
+
+        // 创建 TaskService 实例
+        let service: ITaskService = CoCreateInstance(&TaskScheduler, None, CLSCTX_INPROC_SERVER)?;
+        service.Connect(
+            &VARIANT::default(),
+            &VARIANT::default(),
+            &VARIANT::default(),
+            &VARIANT::default(),
+        )?;
+
+        // 检查任务是否存在
+        let folder = service.GetFolder(&BSTR::from("\\"))?;
+        let task = folder.GetTask(&BSTR::from(name));
+        Ok(task.is_ok())
+    }
 }

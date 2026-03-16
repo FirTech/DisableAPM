@@ -73,6 +73,8 @@ DisableAPM.exe [OPTIONS]
 OPTIONS:
     -i, --index <INDEX>    Target a specific disk index (0-based)
     -u, --usb              Include USB external drives
+        --install          Install as a Windows service
+        --uninstall        Uninstall the Windows service
     -h, --help             Print help information
     -V, --version          Print version information
 ```
@@ -95,6 +97,39 @@ Disable APM on all drives including USB external hard drives:
 
 ```cmd
 DisableAPM.exe --usb
+```
+
+### Service Installation
+
+Install as a Windows service that runs automatically on system startup:
+
+```cmd
+DisableAPM.exe --install
+```
+
+The service will be installed to `C:\Program Files\DisableAPM\` and will run automatically on system startup with
+administrator privileges.
+
+This will remove the service and delete the installation directory.
+
+You can combine installation options with other parameters. For example, to install a service that includes USB drives:
+
+```cmd
+DisableAPM.exe --install --usb
+```
+
+Or to install a service that targets a specific disk:
+
+```cmd
+DisableAPM.exe --install --index 2
+```
+
+### Service Uninstallation
+
+Uninstall the Windows service:
+
+```cmd
+DisableAPM.exe --uninstall
 ```
 
 ### How to Find Your Disk Index
@@ -124,7 +159,7 @@ The ATA command used:
 
 ## Compatibility
 
-- **OS:** Windows 10/11 (x64)
+- **OS:** Windows XP/7/8/8.1/10/11 (x86/x64)
 - **Drive Types:** SATA HDDs, NVMe drives are skipped automatically
 - **USB Drives:** Skipped by default (use `--usb` to include)
 - **SSDs:** Automatically detected and skipped
@@ -134,21 +169,6 @@ The ATA command used:
 - APM settings are not persistent across reboots - you need to run this tool after each boot
 - Some USB enclosures may not support ATA pass-through commands
 - RAID volumes may not respond to APM commands depending on the controller
-
-## Auto-run on Startup
-
-To automatically disable APM on every boot:
-
-1. Press `Win + R`, type `shell:startup` and press Enter
-2. Create a shortcut to `DisableAPM.exe`
-3. Right-click the shortcut → Properties → Shortcut tab → Advanced
-4. Check "Run as administrator" and click OK
-
-Alternatively, use Task Scheduler:
-
-1. Open Task Scheduler (`taskschd.msc`)
-2. Create a new task triggered by "At startup"
-3. Set the action to run `DisableAPM.exe` with highest privileges
 
 ## Safety
 

@@ -4,13 +4,13 @@ cd /d %~dp0
 rem X64
 cargo build --release
 IF EXIST upx.exe (
-	upx.exe "%cd%\target\release\KeepSpin.exe" --best --compress-resources=0 --strip-relocs=0 --compress-icons=0 --compress-exports=0 --lzma
+	upx.exe "%cd%\target\release\DisableAPM.exe" --best --compress-resources=0 --strip-relocs=0 --compress-icons=0 --compress-exports=0 --lzma
 )
 
 rem X86
 cargo build --release --target=i686-pc-windows-msvc
 IF EXIST upx.exe (
-	upx.exe "%cd%\target\i686-pc-windows-msvc\release\KeepSpin.exe" --best --compress-resources=0 --strip-relocs=0 --compress-icons=0 --compress-exports=0 --lzma
+	upx.exe "%cd%\target\i686-pc-windows-msvc\release\DisableAPM.exe" --best --compress-resources=0 --strip-relocs=0 --compress-icons=0 --compress-exports=0 --lzma
 )
 
 rem ARM64
